@@ -66,6 +66,56 @@ footer{text-align:center;color:#8792a4;font-size:11px;padding:20px}
     <div class="card"><span>Unrealised P/L</span><strong id="unrealised">₹0.00</strong></div>
     <div class="card"><span>Today's Realised P/L</span><strong id="realised">₹0.00</strong></div>
   </section>
+  
+<section class="panel">
+  <div class="toolbar">
+    <h2>Daily Capital Summary</h2>
+    <span class="spacer"></span>
+    <button class="primary" onclick="openAdjustment()">＋ Withdrawal / Deposit</button>
+  </div>
+  <div class="cards">
+    <div class="card"><span>Today's Opening Capital</span><strong id="openingCapital">₹0.00</strong></div>
+    <div class="card"><span>Today's Net P/L</span><strong id="dailyPL">₹0.00</strong></div>
+    <div class="card"><span>Today's Capital Change</span><strong id="dailyChange">0.00%</strong></div>
+    <div class="card"><span>Current Capital</span><strong id="currentCapital">₹0.00</strong></div>
+  </div>
+  <h2>Daily Capital History</h2>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Date</th><th>Opening Capital</th><th>Realised P/L</th><th>Adjustments</th><th>Closing Capital</th></tr>
+      </thead>
+      <tbody id="capitalHistory"></tbody>
+    </table>
+  </div>
+</section>
+
+<dialog id="adjustmentDialog">
+  <h2>Capital Adjustment</h2>
+  <div class="field">
+    <label>Adjustment Type</label>
+    <select id="adjustmentType">
+      <option value="withdrawal">Withdrawal</option>
+      <option value="deposit">Additional Deposit</option>
+    </select>
+  </div>
+  <div class="field">
+    <label>Amount (₹)</label>
+    <input id="adjustmentAmount" type="number" min="0.01" step="0.01">
+  </div>
+  <div class="field">
+    <label>Date</label>
+    <input id="adjustmentDate" type="date">
+  </div>
+  <div class="field">
+    <label>Notes (optional)</label>
+    <input id="adjustmentNote" placeholder="e.g. Personal withdrawal">
+  </div>
+  <div class="dialog-actions">
+    <button onclick="closeDialog('adjustmentDialog')">Cancel</button>
+    <button class="primary" onclick="saveAdjustment()">Save Adjustment</button>
+  </div>
+</dialog>
 
   <section class="panel">
     <div class="toolbar">
@@ -164,7 +214,7 @@ const money=n=>"₹"+Number(n||0).toLocaleString("en-IN",{minimumFractionDigits:
 const num=id=>Number(document.getElementById(id).value);
 const val=id=>document.getElementById(id).value;
 const byId=id=>document.getElementById(id);
-let data={capital:100000,defaultCharges:142,trades:[]};
+let data={capital:100000,defaultCharges:142,trades:[],adjustments:[]};
 let activeId=null;
 
 function load(){
@@ -282,13 +332,97 @@ byId("editForm").addEventListener("submit",e=>{
   save();closeDialog("editDialog");
 });
 
+function adjustmentTotal(date){
+  return (data.adjustments||[])
+    .filter(a=>a.date===date)
+    .reduce((sum,a)=>sum+a.amount,0);
+}
+
+function realisedOn(date){
+  return data.trades
+    .filter(t=>t.status==="sold"&&t.soldDate===date)
+    .reduce((sum,t)=>sum+pl(t),0);
+}
+
+function openingCapital(date){
+  const tradePL=data.trades
+    .filter(t=>t.status==="sold"&&t.soldDate<date)
+    .reduce((sum,t)=>sum+pl(t),0);
+
+  const previousAdjustments=(data.adjustments||[])
+    .filter(a=>a.date<date)
+    .reduce((sum,a)=>sum+a.amount,0);
+
+  return data.capital+tradePL+previousAdjustments;
+}
+
+function closingCapital(date){
+  return openingCapital(date)+realisedOn(date)+adjustmentTotal(date);
+}
+
+function currentCapital(){
+  const allPL=data.trades
+    .filter(t=>t.status==="sold")
+    .reduce((sum,t)=>sum+pl(t),0);
+
+  const allAdjustments=(data.adjustments||[])
+    .reduce((sum,a)=>sum+a.amount,0);
+
+  return data.capital+allPL+allAdjustments;
+}
+
+function openAdjustment(){
+  byId("adjustmentType").value="withdrawal";
+  byId("adjustmentAmount").value="";
+  byId("adjustmentDate").value=today();
+  byId("adjustmentNote").value="";
+  byId("adjustmentDialog").showModal();
+}
+
+function saveAdjustment(){
+  const amount=num("adjustmentAmount");
+  const date=val("adjustmentDate");
+
+  if(!amount||amount<=0||!date){
+    alert("Please enter a valid amount and date.");
+    return;
+  }
+
+  const type=val("adjustmentType");
+  const signedAmount=type==="withdrawal"?-amount:amount;
+
+  data.adjustments.push({
+    id:id(),
+    date:date,
+    amount:signedAmount,
+    note:val("adjustmentNote").trim(),
+    type:type
+  });
+
+  save();
+  closeDialog("adjustmentDialog");
+}
+
 function render(){
   const open=data.trades.filter(t=>t.status==="open");
   const soldToday=data.trades.filter(t=>t.status==="sold"&&t.soldDate===today());
   const invested=open.reduce((s,t)=>s+t.qty*t.buyPrice,0);
   const unrealised=open.reduce((s,t)=>s+estimatedPL(t),0);
   const realised=soldToday.reduce((s,t)=>s+pl(t),0);
+  const todayOpening=openingCapital(today());
+const todayPL=realisedOn(today());
+const todayAdjustments=adjustmentTotal(today());
+const todayChange=todayPL+todayAdjustments;
+const todayPercent=todayOpening!==0?(todayChange/todayOpening)*100:0;
+
   byId("capital").textContent=money(data.capital);
+  byId("openingCapital").textContent=money(todayOpening);
+  byId("dailyPL").textContent=money(todayPL);
+  byId("dailyPL").className=todayPL>=0?"profit":"loss";
+  byId("dailyChange").textContent=
+  (todayPercent>=0?"+":"")+todayPercent.toFixed(2)+"%";
+  byId("dailyChange").className=todayChange>=0?"profit":"loss";
+  byId("currentCapital").textContent=money(currentCapital());
   byId("invested").textContent=money(invested);
   byId("unrealised").textContent=money(unrealised);
   byId("unrealised").className=unrealised>=0?"profit":"loss";
@@ -337,6 +471,30 @@ function render(){
     <td>${money(t.buyPrice)}</td><td>${t.status==="sold"?money(t.soldPrice):"—"}</td>
     <td><span class="status ${t.status}">${t.status.toUpperCase()}</span></td>
     <td class="${t.status==="sold"?(pl(t)>=0?"profit":"loss"):""}">${t.status==="sold"?money(pl(t)):t.status==="open"?money(estimatedPL(t)):"—"}</td></tr>`).join(""):`<tr><td colspan="7" class="empty">No trades recorded.</td></tr>`;
+const dates=new Set([today()]);
+
+data.trades
+  .filter(t=>t.status==="sold"&&t.soldDate)
+  .forEach(t=>dates.add(t.soldDate));
+
+(data.adjustments||[]).forEach(a=>dates.add(a.date));
+
+const historyDates=[...dates].sort().reverse();
+
+byId("capitalHistory").innerHTML=historyDates.map(date=>{
+  const opening=openingCapital(date);
+  const dailyProfit=realisedOn(date);
+  const adjustments=adjustmentTotal(date);
+  const closing=closingCapital(date);
+
+  return `<tr>
+    <td>${date}</td>
+    <td>${money(opening)}</td>
+    <td class="${dailyProfit>=0?"profit":"loss"}">${money(dailyProfit)}</td>
+    <td class="${adjustments>=0?"profit":"loss"}">${money(adjustments)}</td>
+    <td><b>${money(closing)}</b></td>
+  </tr>`;
+}).join("");
 }
 function removeTrade(idValue){
   if(!confirm("Remove this pending trade?"))return;
@@ -359,7 +517,12 @@ function restoreBackup(e){
       const restored=JSON.parse(reader.result);
       if(!Array.isArray(restored.trades))throw new Error("Invalid backup");
       if(!confirm("Restore this backup? Current app data will be replaced."))return;
-      data={capital:Number(restored.capital)||0,defaultCharges:Number(restored.defaultCharges)||142,trades:restored.trades};
+      data={
+      capital:Number(restored.capital)||0,
+      defaultCharges:Number(restored.defaultCharges)||142,
+      trades:restored.trades,
+      adjustments:Array.isArray(restored.adjustments)?restored.adjustments:[]
+    };
       save();alert("Backup restored successfully.");
     }catch(err){alert("Could not restore. Please select a valid backup file.");}
     e.target.value="";
