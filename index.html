@@ -1,0 +1,372 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Intraday Stock Monitor</title>
+<style>
+:root{font-family:Arial,sans-serif;color:#172033;background:#f3f5f9}
+*{box-sizing:border-box}
+body{margin:0}
+header{background:#14243d;color:white;padding:18px 5%;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+header h1{font-size:21px;margin:0}
+main{max-width:1200px;margin:24px auto;padding:0 16px}
+button{border:0;border-radius:8px;padding:10px 14px;font-weight:600;cursor:pointer;background:#e5eaf2;color:#172033}
+button.primary{background:#1769d2;color:white}
+button.success{background:#13834b;color:white}
+button.danger{background:#c43d43;color:white}
+button.small{padding:7px 10px;font-size:12px;margin:2px}
+.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px}
+.card,.panel{background:white;border-radius:12px;padding:17px;box-shadow:0 2px 10px #1720330b}
+.card span{font-size:12px;color:#64748b}
+.card strong{display:block;font-size:22px;margin-top:8px}
+.panel{margin:16px 0;overflow:hidden}
+.panel h2{font-size:17px;margin:0 0 14px}
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.toolbar .spacer{flex:1}
+table{width:100%;border-collapse:collapse;min-width:850px}
+th,td{text-align:left;padding:11px 9px;border-bottom:1px solid #edf0f5;font-size:13px;white-space:nowrap}
+th{background:#f7f9fc;color:#526078;font-size:12px}
+.table-wrap{overflow-x:auto}
+input{width:100%;padding:10px;border:1px solid #ccd4e0;border-radius:7px;font-size:14px;background:white;color:#172033}
+label{font-size:12px;color:#536078;display:block;margin-bottom:5px}
+.field{margin-bottom:13px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.muted{color:#718096;font-size:12px}
+.profit{color:#13834b;font-weight:700}
+.loss{color:#c43d43;font-weight:700}
+.status{display:inline-block;padding:5px 8px;border-radius:20px;font-size:11px;font-weight:700}
+.pending{background:#fff2d5;color:#8b5b00}
+.open{background:#dff5e8;color:#12653a}
+.sold{background:#e4edff;color:#2454a0}
+.empty{text-align:center;color:#8190a5;padding:24px}
+dialog{border:0;border-radius:14px;width:min(460px,calc(100% - 24px));padding:22px;box-shadow:0 15px 60px #0004}
+dialog::backdrop{background:#10182799}
+dialog h2{margin:0 0 17px;font-size:19px}
+.dialog-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
+.target{font-weight:700;color:#1769d2}
+footer{text-align:center;color:#8792a4;font-size:11px;padding:20px}
+@media(max-width:760px){.cards{grid-template-columns:1fr 1fr}.card strong{font-size:18px}header{padding:15px}main{margin-top:14px}.grid2{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header>
+  <h1>📈 Intraday Stock Monitor</h1>
+  <div class="toolbar">
+    <button onclick="openSettings()">⚙ Settings</button>
+    <button class="primary" onclick="openBuy()">＋ New Buy</button>
+  </div>
+</header>
+
+<main>
+  <section class="cards">
+    <div class="card"><span>Initial Capital</span><strong id="capital">₹0.00</strong></div>
+    <div class="card"><span>Capital in Open Trades</span><strong id="invested">₹0.00</strong></div>
+    <div class="card"><span>Unrealised P/L</span><strong id="unrealised">₹0.00</strong></div>
+    <div class="card"><span>Today's Realised P/L</span><strong id="realised">₹0.00</strong></div>
+  </section>
+
+  <section class="panel">
+    <div class="toolbar">
+      <h2>Open Positions</h2><span class="spacer"></span>
+      <span class="muted">Update current prices manually</span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Stock</th><th>Qty</th><th>Buy Price</th><th>Current Price</th><th>Target Sell</th><th>Est. Net P/L</th><th>Status</th><th>Actions</th></tr></thead>
+        <tbody id="openRows"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="toolbar">
+      <h2>Today's Sold Trades</h2><span class="spacer"></span>
+      <strong id="todayTotal">₹0.00</strong>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Stock</th><th>Qty</th><th>Buy Price</th><th>Sold Price</th><th>Actual Charges</th><th>Realised P/L</th><th>Actions</th></tr></thead>
+        <tbody id="todayRows"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="toolbar">
+      <h2>All Trades</h2><span class="spacer"></span>
+      <button onclick="exportBackup()">⬇ Backup</button>
+      <button onclick="document.getElementById('restoreFile').click()">⬆ Restore</button>
+      <input type="file" id="restoreFile" accept=".json,application/json" hidden onchange="restoreBackup(event)">
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Date</th><th>Stock</th><th>Qty</th><th>Buy Price</th><th>Sell Price</th><th>Status</th><th>Profit / Loss</th></tr></thead>
+        <tbody id="allRows"></tbody>
+      </table>
+    </div>
+  </section>
+  <footer>Personal tracker · Prices are entered manually · Data is saved in this browser</footer>
+</main>
+
+<dialog id="buyDialog">
+  <h2>New Buy</h2>
+  <form id="buyForm">
+    <div class="field"><label>Stock Symbol</label><input id="symbol" required placeholder="e.g. RELIANCE"></div>
+    <div class="grid2">
+      <div class="field"><label>Quantity</label><input id="qty" type="number" min="1" step="1" required></div>
+      <div class="field"><label>Buy Price (₹)</label><input id="buyPrice" type="number" min="0.01" step="0.01" required></div>
+      <div class="field"><label>Estimated Total Charges (₹)</label><input id="buyCharges" type="number" min="0" step="0.01" required></div>
+      <div class="field"><label>Desired Net Profit (₹)</label><input id="desiredProfit" type="number" min="0" step="0.01" value="500" required></div>
+      <div class="field"><label>Current Price (₹)</label><input id="currentPrice" type="number" min="0" step="0.01"></div>
+    </div>
+    <p class="muted">Target sell price includes estimated total buy and sell charges.</p>
+    <p>Calculated target: <strong class="target" id="targetPreview">—</strong></p>
+    <label><input id="confirmImmediately" type="checkbox" style="width:auto"> Buy is already confirmed</label>
+    <div class="dialog-actions"><button type="button" onclick="closeDialog('buyDialog')">Cancel</button><button class="primary" type="submit">Save Buy</button></div>
+  </form>
+</dialog>
+
+<dialog id="sellDialog">
+  <h2>Confirm Sold</h2>
+  <form id="sellForm">
+    <p class="muted" id="sellStock"></p>
+    <div class="field"><label>Final Sold Price per Share (₹)</label><input id="sellPrice" type="number" min="0.01" step="0.01" required></div>
+    <div class="field"><label>Actual Total Charges (₹)</label><input id="sellCharges" type="number" min="0" step="0.01" required></div>
+    <p>Realised P/L preview: <strong id="sellPreview">—</strong></p>
+    <div class="dialog-actions"><button type="button" onclick="closeDialog('sellDialog')">Cancel</button><button class="success" type="submit">Confirm Sold</button></div>
+  </form>
+</dialog>
+
+<dialog id="editDialog">
+  <h2>Edit Sold Trade</h2>
+  <form id="editForm">
+    <p class="muted" id="editStock"></p>
+    <div class="field"><label>Correct Final Sold Price per Share (₹)</label><input id="editPrice" type="number" min="0.01" step="0.01" required></div>
+    <div class="field"><label>Correct Actual Total Charges (₹)</label><input id="editCharges" type="number" min="0" step="0.01" required></div>
+    <p>Corrected P/L: <strong id="editPreview">—</strong></p>
+    <div class="dialog-actions"><button type="button" onclick="closeDialog('editDialog')">Cancel</button><button class="primary" type="submit">Save Correction</button></div>
+  </form>
+</dialog>
+
+<dialog id="settingsDialog">
+  <h2>Settings</h2>
+  <div class="field"><label>Initial Capital (₹)</label><input id="initialCapital" type="number" min="0" step="0.01"></div>
+  <div class="field"><label>Default Estimated Total Charges per Trade (₹)</label><input id="defaultCharges" type="number" min="0" step="0.01"></div>
+  <div class="dialog-actions"><button onclick="closeDialog('settingsDialog')">Cancel</button><button class="primary" onclick="saveSettings()">Save Settings</button></div>
+</dialog>
+
+<script>
+const KEY="intradayStockMonitor.v1";
+const today=()=>new Date().toLocaleDateString("en-CA");
+const money=n=>"₹"+Number(n||0).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2});
+const num=id=>Number(document.getElementById(id).value);
+const val=id=>document.getElementById(id).value;
+const byId=id=>document.getElementById(id);
+let data={capital:100000,defaultCharges:142,trades:[]};
+let activeId=null;
+
+function load(){
+  try{
+    const saved=JSON.parse(localStorage.getItem(KEY));
+    if(saved&&Array.isArray(saved.trades))data={...data,...saved};
+  }catch(e){console.warn("Could not load saved data",e)}
+  render();
+}
+function save(){
+  localStorage.setItem(KEY,JSON.stringify(data));
+  render();
+}
+function id(){return crypto.randomUUID?crypto.randomUUID():String(Date.now())+Math.random()}
+function target(t){
+  return Math.ceil(((t.qty*t.buyPrice+t.estimatedCharges+t.desiredProfit)/t.qty)*100-1e-8)/100;
+}
+function pl(t){
+  return t.soldPrice==null?0:t.qty*(t.soldPrice-t.buyPrice)-t.actualCharges;
+}
+function estimatedPL(t){
+  return t.currentPrice==null?0:t.qty*(t.currentPrice-t.buyPrice)-t.estimatedCharges;
+}
+function closeDialog(name){byId(name).close()}
+function openSettings(){
+  byId("initialCapital").value=data.capital;
+  byId("defaultCharges").value=data.defaultCharges;
+  byId("settingsDialog").showModal();
+}
+function saveSettings(){
+  data.capital=Math.max(0,num("initialCapital"));
+  data.defaultCharges=Math.max(0,num("defaultCharges"));
+  save();closeDialog("settingsDialog");
+}
+function openBuy(){
+  byId("buyForm").reset();
+  byId("buyCharges").value=data.defaultCharges;
+  byId("desiredProfit").value=500;
+  byId("targetPreview").textContent="Enter quantity and buy price";
+  byId("buyDialog").showModal();
+}
+function updateTargetPreview(){
+  const q=num("qty"),p=num("buyPrice"),c=num("buyCharges"),profit=num("desiredProfit");
+  byId("targetPreview").textContent=q>0&&p>0?money(Math.ceil(((q*p+c+profit)/q)*100-1e-8)/100):"—";
+}
+["qty","buyPrice","buyCharges","desiredProfit"].forEach(x=>byId(x).addEventListener("input",updateTargetPreview));
+
+byId("buyForm").addEventListener("submit",e=>{
+  e.preventDefault();
+  const t={
+    id:id(),symbol:val("symbol").trim().toUpperCase(),qty:num("qty"),
+    buyPrice:num("buyPrice"),estimatedCharges:num("buyCharges"),
+    desiredProfit:num("desiredProfit"),currentPrice:num("currentPrice")||num("buyPrice"),
+    status:byId("confirmImmediately").checked?"open":"pending",
+    date:today(),createdAt:new Date().toISOString(),boughtAt:byId("confirmImmediately").checked?new Date().toISOString():null
+  };
+  if(!t.symbol||t.qty<=0||t.buyPrice<=0||t.estimatedCharges<0||t.desiredProfit<0)return;
+  data.trades.unshift(t);save();closeDialog("buyDialog");
+});
+
+function confirmBuy(idValue){
+  const t=data.trades.find(x=>x.id===idValue);if(!t)return;
+  t.status="open";t.boughtAt=new Date().toISOString();save();
+}
+function updatePrice(idValue,value){
+  const t=data.trades.find(x=>x.id===idValue);if(!t)return;
+  const p=Number(value);if(p>0){t.currentPrice=p;save();}
+}
+function openSell(idValue){
+  activeId=idValue;
+  const t=data.trades.find(x=>x.id===idValue);if(!t)return;
+  byId("sellStock").textContent=t.symbol+" · "+t.qty+" shares · Target "+money(target(t));
+  byId("sellPrice").value=t.currentPrice||"";
+  byId("sellCharges").value=t.estimatedCharges;
+  updateSellPreview();
+  byId("sellDialog").showModal();
+}
+function updateSellPreview(){
+  const t=data.trades.find(x=>x.id===activeId);if(!t)return;
+  const p=num("sellPrice"),c=num("sellCharges");
+  const result=t.qty*(p-t.buyPrice)-c;
+  byId("sellPreview").textContent=money(result);
+  byId("sellPreview").className=result>=0?"profit":"loss";
+}
+byId("sellPrice").addEventListener("input",updateSellPreview);
+byId("sellCharges").addEventListener("input",updateSellPreview);
+byId("sellForm").addEventListener("submit",e=>{
+  e.preventDefault();
+  const t=data.trades.find(x=>x.id===activeId);if(!t)return;
+  t.soldPrice=num("sellPrice");t.actualCharges=num("sellCharges");
+  t.soldAt=new Date().toISOString();t.soldDate=today();t.status="sold";
+  save();closeDialog("sellDialog");
+});
+function openEdit(idValue){
+  activeId=idValue;
+  const t=data.trades.find(x=>x.id===idValue);if(!t)return;
+  byId("editStock").textContent=t.symbol+" · "+t.qty+" shares";
+  byId("editPrice").value=t.soldPrice;
+  byId("editCharges").value=t.actualCharges;
+  updateEditPreview();byId("editDialog").showModal();
+}
+function updateEditPreview(){
+  const t=data.trades.find(x=>x.id===activeId);if(!t)return;
+  const result=t.qty*(num("editPrice")-t.buyPrice)-num("editCharges");
+  byId("editPreview").textContent=money(result);
+  byId("editPreview").className=result>=0?"profit":"loss";
+}
+byId("editPrice").addEventListener("input",updateEditPreview);
+byId("editCharges").addEventListener("input",updateEditPreview);
+byId("editForm").addEventListener("submit",e=>{
+  e.preventDefault();
+  const t=data.trades.find(x=>x.id===activeId);if(!t)return;
+  t.soldPrice=num("editPrice");t.actualCharges=num("editCharges");
+  t.correctedAt=new Date().toISOString();
+  save();closeDialog("editDialog");
+});
+
+function render(){
+  const open=data.trades.filter(t=>t.status==="open");
+  const soldToday=data.trades.filter(t=>t.status==="sold"&&t.soldDate===today());
+  const invested=open.reduce((s,t)=>s+t.qty*t.buyPrice,0);
+  const unrealised=open.reduce((s,t)=>s+estimatedPL(t),0);
+  const realised=soldToday.reduce((s,t)=>s+pl(t),0);
+  byId("capital").textContent=money(data.capital);
+  byId("invested").textContent=money(invested);
+  byId("unrealised").textContent=money(unrealised);
+  byId("unrealised").className=unrealised>=0?"profit":"loss";
+  byId("realised").textContent=money(realised);
+  byId("realised").className=realised>=0?"profit":"loss";
+  byId("todayTotal").textContent=money(realised);
+  byId("todayTotal").className=realised>=0?"profit":"loss";
+
+  byId("openRows").innerHTML=open.length?open.map(t=>`
+    <tr>
+      <td><b>${esc(t.symbol)}</b></td><td>${t.qty}</td><td>${money(t.buyPrice)}</td>
+      <td><input aria-label="Current price for ${esc(t.symbol)}" type="number" min="0.01" step="0.01" value="${t.currentPrice??t.buyPrice}" style="width:105px" onchange="updatePrice('${t.id}',this.value)"></td>
+      <td class="target">${money(target(t))}</td>
+      <td class="${estimatedPL(t)>=0?"profit":"loss"}">${money(estimatedPL(t))}</td>
+      <td><span class="status open">OPEN</span></td>
+      <td><button class="success small" onclick="openSell('${t.id}')">Confirm Sold</button></td>
+    </tr>`).join(""):`<tr><td colspan="8" class="empty">No open positions yet.</td></tr>`;
+
+  const pending=data.trades.filter(t=>t.status==="pending");
+  const pendingHTML=pending.map(t=>`
+    <tr><td><b>${esc(t.symbol)}</b></td><td>${t.qty}</td><td>${money(t.buyPrice)}</td>
+    <td>${money(t.currentPrice)}</td><td class="target">${money(target(t))}</td>
+    <td><span class="status pending">PENDING BUY</span></td>
+    <td><button class="success small" onclick="confirmBuy('${t.id}')">Confirm Buy</button>
+    <button class="danger small" onclick="removeTrade('${t.id}')">Remove</button></td></tr>`).join("");
+  if(pending.length){
+    byId("openRows").innerHTML=`
+      <tr><th colspan="8">Pending Buys — confirm after your purchase</th></tr>`+
+      pendingHTML+
+      `<tr><th colspan="8">Open Positions</th></tr>`+
+      (open.length?open.map(t=>`
+      <tr><td><b>${esc(t.symbol)}</b></td><td>${t.qty}</td><td>${money(t.buyPrice)}</td>
+      <td><input type="number" min="0.01" step="0.01" value="${t.currentPrice??t.buyPrice}" style="width:105px" onchange="updatePrice('${t.id}',this.value)"></td>
+      <td class="target">${money(target(t))}</td><td class="${estimatedPL(t)>=0?"profit":"loss"}">${money(estimatedPL(t))}</td>
+      <td><span class="status open">OPEN</span></td><td><button class="success small" onclick="openSell('${t.id}')">Confirm Sold</button></td></tr>`).join(""):`<tr><td colspan="8" class="empty">No open positions.</td></tr>`);
+  }
+
+  byId("todayRows").innerHTML=soldToday.length?soldToday.map(t=>`
+    <tr><td>${esc(t.symbol)}</td><td>${t.qty}</td><td>${money(t.buyPrice)}</td>
+    <td>${money(t.soldPrice)}</td><td>${money(t.actualCharges)}</td>
+    <td class="${pl(t)>=0?"profit":"loss"}">${money(pl(t))}</td>
+    <td><button class="small" onclick="openEdit('${t.id}')">Edit Sold Trade</button></td></tr>`).join(""):`<tr><td colspan="7" class="empty">No trades sold today.</td></tr>`;
+
+  byId("allRows").innerHTML=data.trades.length?data.trades.map(t=>`
+    <tr><td>${t.soldDate||t.date}</td><td>${esc(t.symbol)}</td><td>${t.qty}</td>
+    <td>${money(t.buyPrice)}</td><td>${t.status==="sold"?money(t.soldPrice):"—"}</td>
+    <td><span class="status ${t.status}">${t.status.toUpperCase()}</span></td>
+    <td class="${t.status==="sold"?(pl(t)>=0?"profit":"loss"):""}">${t.status==="sold"?money(pl(t)):t.status==="open"?money(estimatedPL(t)):"—"}</td></tr>`).join(""):`<tr><td colspan="7" class="empty">No trades recorded.</td></tr>`;
+}
+function removeTrade(idValue){
+  if(!confirm("Remove this pending trade?"))return;
+  data.trades=data.trades.filter(t=>t.id!==idValue);save();
+}
+function esc(s){
+  return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+function exportBackup(){
+  const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
+  const url=URL.createObjectURL(blob),a=document.createElement("a");
+  a.href=url;a.download="intraday-stock-backup-"+today()+".json";a.click();
+  URL.revokeObjectURL(url);
+}
+function restoreBackup(e){
+  const file=e.target.files[0];if(!file)return;
+  const reader=new FileReader();
+  reader.onload=()=>{
+    try{
+      const restored=JSON.parse(reader.result);
+      if(!Array.isArray(restored.trades))throw new Error("Invalid backup");
+      if(!confirm("Restore this backup? Current app data will be replaced."))return;
+      data={capital:Number(restored.capital)||0,defaultCharges:Number(restored.defaultCharges)||142,trades:restored.trades};
+      save();alert("Backup restored successfully.");
+    }catch(err){alert("Could not restore. Please select a valid backup file.");}
+    e.target.value="";
+  };
+  reader.readAsText(file);
+}
+load();
+</script>
+</body>
+</html>
